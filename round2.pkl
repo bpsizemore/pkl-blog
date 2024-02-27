@@ -1,0 +1,38 @@
+tenant_names = List("tenant1", "tenant2")
+
+serviceObjects {
+  for (_name in tenant_names) {
+    [_name] {
+      apiVersion = "v1"
+      kind = "Service"
+      metadata {
+        name = "singletenant-api-" + _name
+      }
+      spec {
+        ports = new Listing {
+          new {
+            ["port"] = 4443
+            ["name"] = "https"
+            ["targetPort"] = 443
+          }
+        }
+        selector {
+          ["app"] = "singletenant-api-" + _name
+        }
+        type = "ClusterIP"
+      }
+    }
+  }
+}
+
+output {
+  files {
+    for (_name in tenant_names) {
+
+      ["./" + _name + "/service.yaml"] {
+        value = serviceObjects[_name]
+        renderer = new YamlRenderer {}
+      }
+    }
+  }
+}

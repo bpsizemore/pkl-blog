@@ -1,0 +1,29 @@
+//tenant_names = List("tenant1", "tenant2")
+tenant_name = read("env:TENANT")
+
+service {
+  apiVersion = "v1"
+  kind = "Service"
+  metadata {
+    name = "singletenant-api-" + tenant_name
+  }
+  spec {
+    ports = new Listing {
+      new {
+        ["port"] = 4443
+        ["name"] = "https"
+        ["targetPort"] = 443
+      }
+    }
+    selector {
+      ["app"] = "singletenant-api-" + tenant_name
+    }
+    type = "ClusterIP"
+  }
+}
+
+
+output {
+  value = service
+  renderer = new YamlRenderer {}
+}

@@ -1,0 +1,33 @@
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/K8sResource.pkl"
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/api/core/v1/Service.pkl"
+
+// Use -p tenant=NAME to specify prop
+tenant_name = read("prop:tenant")
+
+resources: Listing<K8sResource> = new {
+  new Service {
+    metadata {
+      name = "singletenant-api-" + tenant_name
+    }
+    spec {
+      ports {
+        new {
+          port = 4443
+          targetPort = 443
+          name = "https"
+        }
+      }
+      selector {
+        ["app"] = "singletenant-api-" + tenant_name
+      }
+      type = "ClusterIP"
+    }
+  }
+}
+
+output {
+  value = resources
+  renderer = (K8sResource.output.renderer as YamlRenderer) {
+    isStream = true
+  }
+}

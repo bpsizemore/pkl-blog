@@ -1,0 +1,43 @@
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/K8sResource.pkl"
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/api/core/v1/Service.pkl"
+
+tenant_names = List("tenant1", "tenant2")
+
+services: Listing<K8sResource> = new {
+  for (_name in tenant_names) {
+    new Service {
+      metadata {
+        name = "singletenant-api-" + _name
+        annotations {
+          ["generated-by"] = "pkl"
+          ["name"] = _name
+        }
+      }
+      spec {
+        ports {
+          new {
+            port = 4443
+            targetPort = 443
+            name = "https"
+          }
+        }
+        selector {
+          ["app"] = "singletenant-api-" + _name
+        }
+        type = "ClusterIP"
+      }
+    }
+  }
+}
+
+output {
+  files {
+    for (s in services) {
+
+      ["./" + s.metadata.annotations["name"] + "/service.yaml"] {
+        value = s
+        renderer = new YamlRenderer {}
+      }
+    }
+  }
+}

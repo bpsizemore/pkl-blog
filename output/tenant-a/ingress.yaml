@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    cert-manager.io/issuer: letsencrypt
+    tenant-name: tenant-a
+  name: single-tenant-api-tenant-a
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: tenant-a.api.singletenant.com
+    http:
+      paths:
+      - path: /
+        backend:
+          service:
+            port:
+              number: 4443
+            name: single-tenant-api-tenant-a
+        pathType: Prefix
+  tls:
+  - secretName: tenant-a-api-singletenant-com
+    hosts:
+    - tenant-a.api.singletenant.com

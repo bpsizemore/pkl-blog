@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    generated-by: pkl
+    tenant-name: tenant-a
+  name: single-tenant-api-tenant-a
+spec:
+  template:
+    metadata:
+      labels:
+        app: single-tenant-api-tenant-a
+      name: single-tenant-api-tenant-a
+    spec:
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+      - name: imagePullKey
+      securityContext: {}
+      schedulerName: default-scheduler
+      restartPolicy: Always
+      containers:
+      - image: index.docker.io/account/api:1.0.1
+        imagePullPolicy: Always
+        terminationMessagePolicy: File
+        terminationMessagePath: /dev/termination-log
+        resources:
+          requests:
+            cpu: 500m
+            memory: 600Mi
+          limits:
+            memory: 600Mi
+        env:
+        - name: TENANT
+          value: tenant-a
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: single-tenant-api
+              key: DB_USER
+        - name: DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: single-tenant-api
+              key: DB_PASS
+        - name: DNS_SERVER
+          valueFrom:
+            secretKeyRef:
+              name: shared-config
+              key: DNS_SERVER
+        name: single-tenant-api-tenant-a
+        envFrom:
+        - configMapRef:
+            name: single-tenant-api-configmap
+  replicas: 2
+  selector:
+    matchLabels:
+      app: single-tenant-api-tenant-a
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1

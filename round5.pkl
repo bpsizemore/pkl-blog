@@ -1,0 +1,224 @@
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/K8sResource.pkl"
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/api/apps/v1/Deployment.pkl"
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/api/core/v1/Service.pkl"
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/api/networking/v1/Ingress.pkl"
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/api/core/v1/EnvVar.pkl"
+
+/* Specify this with the -m ./output
+   path_prefix = "./output/"
+*/
+
+tenants = List(
+  "tenant-a",
+  "tenant-b",
+  "tenant-c"
+)
+
+image_tag = "1.0.1"
+pod {
+  requests {
+    memory = "600Mi"
+    cpu    = "500m"
+  }
+}
+
+varAndSecret = Map(
+  "DB_USER", "single-tenant-api",
+  "DB_PASS", "single-tenant-api",
+  "DNS_SERVER", "shared-config"
+)
+
+Deployments: Listing<K8sResource> = new {
+  for (_name in tenants) {
+    new Deployment {
+      metadata {
+        name = "single-tenant-api-" + _name
+        annotations {
+          ["generated-by"] = "pkl"
+          ["tenant-name"] = _name
+        }
+      }
+      spec {
+        replicas = 2
+        selector {
+          matchLabels {
+            ["app"] = "single-tenant-api-" + _name
+          }
+        }
+        strategy {
+          rollingUpdate {
+            maxSurge = 1
+            maxUnavailable = 1
+          }
+          type = "RollingUpdate"
+        }
+        template {
+          metadata {
+            creationTimestamp = null
+            labels {
+              ["app"] = "single-tenant-api-" + _name
+            }
+            name = "single-tenant-api-" + _name
+          }
+          spec {
+            containers {
+              new {
+                image = "index.docker.io/account/api:" + image_tag
+                name = "single-tenant-api-" + _name
+                imagePullPolicy = "Always"
+                resources {
+                  requests {
+                    ["cpu"] = pod.requests.cpu
+                    ["memory"] = pod.requests.memory
+                  }
+                  limits {
+                    ["memory"] = pod.requests.memory
+                  }
+                }
+                terminationMessagePath = "/dev/termination-log"
+                terminationMessagePolicy = "File"
+                envFrom {
+                  new {
+                    configMapRef {
+                      name = "single-tenant-api-configmap"
+                    }
+                  }
+                }
+                env = new Listing<EnvVar> {
+                  new {
+                    name = "TENANT"
+                    value = _name
+                  }
+                  for (_var,_secret in varAndSecret) {
+                    new {
+                      name = _var
+                      valueFrom {
+                        secretKeyRef {
+                          name = _secret
+                          key = _var
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            imagePullSecrets {
+              new {
+                name = "imagePullKey"
+              }
+            }
+            restartPolicy = "Always"
+            schedulerName = "default-scheduler"
+            securityContext {}
+            terminationGracePeriodSeconds = 30
+          }
+        }
+      }
+    }
+  }
+}
+
+Services: Listing<K8sResource> = new {
+  for (_name in tenants) {
+    new Service {
+      metadata {
+        name = "single-tenant-api-" + _name
+        annotations {
+          ["generated-by"] = "pkl"
+          ["tenant-name"] = _name
+        }
+      }
+      spec {
+        ports {
+          new {
+            port = 4443
+            targetPort = 443
+            name = "https"
+          }
+        }
+        selector {
+          ["app"] = "single-tenant-api-" + _name
+        }
+        type = "ClusterIP"
+      }
+    }
+  }
+}
+
+Ingresses: Listing<K8sResource> = new {
+  for (_name in tenants) {
+    new Ingress {
+      metadata {
+        name = "single-tenant-api-"+_name
+        annotations {
+          ["cert-manager.io/issuer"] = "letsencrypt"
+          ["tenant-name"] = _name
+        }
+      }
+      spec = new {
+        ingressClassName = "nginx"
+        tls = new Listing<Ingress.IngressTLS> {
+          new {
+            secretName = _name + "-api-singletenant-com"
+            hosts = new Listing<String> {
+              _name + ".api.singletenant.com"
+            }
+          }
+        }
+
+        rules = new Listing<Ingress.IngressRule>{
+          new {
+            host = _name + ".api.singletenant.com"
+            http = new Ingress.HTTPIngressRuleValue {
+              paths = new Listing<Ingress.HTTPIngressPath> {
+                new {
+                  path = "/"
+                  pathType = "Prefix"
+                  backend = new Ingress.IngressBackend {
+                    service = new Ingress.IngressServiceBackend {
+                      port = new Ingress.ServiceBackendPort {
+                        number = 4443
+                      }
+                      name = "single-tenant-api-" + _name
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// Customize the yamlrender configuration here
+CustomRenderer = new YamlRenderer{
+
+}
+
+output {
+  files {
+    for (deployment in Deployments) {
+      ["./" + deployment.metadata.annotations["tenant-name"] + "/deployment.yaml"] {
+        value = deployment
+        renderer = CustomRenderer
+      }
+    }
+    // Generate Service yaml files
+    for (service in Services) {
+      ["./" + service.metadata.annotations["tenant-name"] + "/service.yaml"] {
+        value = service
+        renderer = CustomRenderer
+      }
+    }
+
+    for (ingress in Ingresses) {
+      ["./" + ingress.metadata.annotations["tenant-name"] + "/ingress.yaml"] {
+        value = ingress
+        renderer = CustomRenderer
+      }
+    }
+  }
+}
